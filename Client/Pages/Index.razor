@@ -1,0 +1,43 @@
+﻿@page "/"
+@inject HttpClient Http
+
+<InputFile OnChange="FileSelectedAsync" />
+
+@if (_progress != null)
+{
+    <div>@_progress%</div>
+}
+
+@code {
+    private float? _progress;
+
+    private async Task FileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        var data = new byte[e.File.Size];
+        await e.File.OpenReadStream(e.File.Size).ReadAsync(data, 0, data.Length);
+
+        await SubmitAsync(e.File, data);
+    }
+
+    private async Task SubmitAsync(IBrowserFile file, byte[] fileData)
+    {
+        using (var multipartContent = new MultipartFormDataContent())
+        {
+            multipartContent.Add(new ByteArrayContent(fileData), "file", file.Name);
+
+            var progressContent = new ProgressableStreamContent(multipartContent, 4096, (sent, total) =>
+            {
+                _progress = (int)((float)sent / (float)total * 100F);
+                StateHasChanged();
+            });
+
+            var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"api/TempFile/SaveTempFile")
+            {
+                Content = progressContent
+            };
+            requestMessage.Headers.TransferEncodingChunked = true;
+
+            var response = await Http.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
+        }
+    }
+}
